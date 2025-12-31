@@ -1,0 +1,1644 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Photon OS - Distributed Network Operating System</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // Storage utilities
+    const loadFromStorage = (key, defaultValue) => {
+      try {
+        const stored = localStorage.getItem(key);
+        return stored ? JSON.parse(stored) : defaultValue;
+      } catch {
+        return defaultValue;
+      }
+    };
+
+    const saveToStorage = (key, value) => {
+      try {
+        localStorage.setItem(key, JSON.stringify(value));
+      } catch (e) {
+        console.error('Storage error:', e);
+      }
+    };
+
+    // Network API (optional - works with or without server)
+    const NETWORK_API = 'https://api.example.com/photon'; // Users can set their own server
+
+    const networkAPI = {
+      broadcast: async (user, ip, status) => {
+        try {
+          const response = await fetch(NETWORK_API + '/broadcast', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user, ip, status, timestamp: Date.now() })
+          });
+          return await response.json();
+        } catch {
+          return { success: false, local: true };
+        }
+      },
+      
+      getNodes: async () => {
+        try {
+          const response = await fetch(NETWORK_API + '/nodes');
+          return await response.json();
+        } catch {
+          return { nodes: [], local: true };
+        }
+      },
+
+      sendMail: async (from, to, subject, body) => {
+        try {
+          const response = await fetch(NETWORK_API + '/mail/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ from, to, subject, body, timestamp: Date.now() })
+          });
+          return await response.json();
+        } catch {
+          return { success: false, local: true };
+        }
+      },
+
+      getMail: async (user) => {
+        try {
+          const response = await fetch(NETWORK_API + '/mail/inbox/' + user);
+          return await response.json();
+        } catch {
+          return { messages: [], local: true };
+        }
+      },
+
+      joinChatRoom: async (room, user) => {
+        try {
+          const response = await fetch(NETWORK_API + '/chat/join', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ room, user })
+          });
+          return await response.json();
+        } catch {
+          return { success: false, local: true };
+        }
+      },
+
+      sendMessage: async (room, user, message) => {
+        try {
+          const response = await fetch(NETWORK_API + '/chat/message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ room, user, message, timestamp: Date.now() })
+          });
+          return await response.json();
+        } catch {
+          return { success: false, local: true };
+        }
+      },
+
+      getMessages: async (room) => {
+        try {
+          const response = await fetch(NETWORK_API + '/chat/messages/' + room);
+          return await response.json();
+        } catch {
+          return { messages: [], local: true };
+        }
+      }
+    };
+
+    // User accounts structure
+    const DEFAULT_USERS = {
+      'guest': {
+        username: 'guest',
+        displayName: 'Guest User',
+        email: '',
+        password: '', // No password for guest
+        avatar: '👤',
+        created: Date.now(),
+        isGuest: true
+      }
+    };
+
+    // Default filesystem
+    const DEFAULT_FS = {
+      '/': {
+        type: 'dir',
+        contents: {
+          'system': {
+            type: 'dir',
+            contents: {
+              'kernel.sys': { type: 'file', content: 'Photon OS Kernel v2.0', size: 60, executable: false },
+              'network.conf': { type: 'file', content: 'server=' + NETWORK_API + '\nlocal_ip=192.168.1.100', size: 75, executable: false }
+            }
+          },
+          'apps': {
+            type: 'dir',
+            contents: {}
+          },
+          'users': {
+            type: 'dir',
+            contents: {
+              'guest': {
+                type: 'dir',
+                contents: {
+                  'readme.txt': { type: 'file', content: 'Welcome to Photon OS!\n\nThis is a distributed operating system.\n\nFeatures:\n- Create JavaScript apps\n- Network with other users\n- Mail system\n- Chat rooms\n- Full programming environment', size: 150, executable: false }
+                }
+              }
+            }
+          },
+          'mail': {
+            type: 'dir',
+            contents: {}
+          },
+          'shared': {
+            type: 'dir',
+            contents: {}
+          }
+        }
+      }
+    };
+
+    // Built-in app templates
+    const APP_TEMPLATES = {
+      'clock': {
+        name: 'Clock',
+        icon: '🕐',
+        code: `// Clock Application
+const ClockApp = () => {
+  const [time, setTime] = React.useState(new Date().toLocaleTimeString());
+  
+  React.useEffect(() => {
+    const timer = setInterval(() => {
+      setTime(new Date().toLocaleTimeString());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+  
+  return (
+    <div className="flex items-center justify-center h-full bg-gradient-to-br from-blue-500 to-purple-600">
+      <div className="text-center">
+        <div className="text-8xl font-bold text-white mb-4">{time}</div>
+        <div className="text-2xl text-white opacity-80">{new Date().toLocaleDateString()}</div>
+      </div>
+    </div>
+  );
+};
+
+return <ClockApp />;`
+      },
+      'notes': {
+        name: 'Notes',
+        icon: '📓',
+        code: `// Notes Application
+const NotesApp = () => {
+  const [notes, setNotes] = React.useState(() => {
+    const saved = localStorage.getItem('photon-notes');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [current, setCurrent] = React.useState('');
+  
+  React.useEffect(() => {
+    localStorage.setItem('photon-notes', JSON.stringify(notes));
+  }, [notes]);
+  
+  const addNote = () => {
+    if (current.trim()) {
+      setNotes([...notes, { id: Date.now(), text: current, date: new Date().toLocaleString() }]);
+      setCurrent('');
+    }
+  };
+  
+  return (
+    <div className="h-full flex flex-col bg-gray-900 text-white p-4">
+      <div className="mb-4">
+        <textarea
+          value={current}
+          onChange={(e) => setCurrent(e.target.value)}
+          className="w-full p-3 bg-gray-800 rounded border border-gray-700 text-white"
+          placeholder="Write a note..."
+          rows="3"
+        />
+        <button onClick={addNote} className="mt-2 px-4 py-2 bg-blue-600 rounded hover:bg-blue-500">
+          Add Note
+        </button>
+      </div>
+      <div className="flex-1 overflow-auto space-y-2">
+        {notes.map(note => (
+          <div key={note.id} className="p-3 bg-gray-800 rounded">
+            <div className="text-sm text-gray-400 mb-1">{note.date}</div>
+            <div>{note.text}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+return <NotesApp />;`
+      },
+      'paint': {
+        name: 'Paint',
+        icon: '🎨',
+        code: `// Paint Application
+const PaintApp = () => {
+  const canvasRef = React.useRef(null);
+  const [drawing, setDrawing] = React.useState(false);
+  const [color, setColor] = React.useState('#ffffff');
+  
+  const startDrawing = (e) => {
+    setDrawing(true);
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    ctx.beginPath();
+    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+  };
+  
+  const draw = (e) => {
+    if (!drawing) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+    ctx.stroke();
+  };
+  
+  const clear = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+  
+  return (
+    <div className="h-full flex flex-col bg-gray-900">
+      <div className="p-2 bg-gray-800 flex gap-2">
+        <input type="color" value={color} onChange={(e) => setColor(e.target.value)} />
+        <button onClick={clear} className="px-3 py-1 bg-red-600 text-white rounded">Clear</button>
+      </div>
+      <canvas
+        ref={canvasRef}
+        width={600}
+        height={400}
+        className="flex-1 bg-black cursor-crosshair"
+        onMouseDown={startDrawing}
+        onMouseMove={draw}
+        onMouseUp={() => setDrawing(false)}
+        onMouseLeave={() => setDrawing(false)}
+      />
+    </div>
+  );
+};
+
+return <PaintApp />;`
+      }
+    };
+
+    function PhotonOS() {
+      // Auth state
+      const [isAuthenticated, setIsAuthenticated] = useState(false);
+      const [currentUser, setCurrentUser] = useState(null);
+      const [users, setUsers] = useState(() => loadFromStorage('photon-users', DEFAULT_USERS));
+
+      // UI state
+      const [windows, setWindows] = useState([]);
+      const [activeId, setActiveId] = useState(null);
+      const [nextId, setNextId] = useState(1);
+      const [startOpen, setStartOpen] = useState(false);
+
+      // System state
+      const [currentDir, setCurrentDir] = useState('/users/guest');
+      const [fileSystem, setFileSystem] = useState(() => loadFromStorage('photon-fs-v2', DEFAULT_FS));
+      const [customApps, setCustomApps] = useState(() => loadFromStorage('photon-apps-v2', []));
+      const [networkNodes, setNetworkNodes] = useState([]);
+      const [mailbox, setMailbox] = useState(() => loadFromStorage('photon-mail', []));
+      const [chatRooms, setChatRooms] = useState(() => loadFromStorage('photon-chat-rooms', ['general', 'tech', 'random']));
+      
+      const [processes, setProcesses] = useState([
+        { pid: 0, name: 'init', mem: 1024, cpu: 0, user: 'root' },
+        { pid: 1, name: 'photon-shell', mem: 2048, cpu: 1.2, user: 'guest' },
+        { pid: 2, name: 'network-daemon', mem: 3072, cpu: 0.5, user: 'root' }
+      ]);
+      const [nextPid, setNextPid] = useState(3);
+
+      // Save state
+      useEffect(() => { saveToStorage('photon-fs-v2', fileSystem); }, [fileSystem]);
+      useEffect(() => { saveToStorage('photon-apps-v2', customApps); }, [customApps]);
+      useEffect(() => { saveToStorage('photon-users', users); }, [users]);
+      useEffect(() => { saveToStorage('photon-mail', mailbox); }, [mailbox]);
+      useEffect(() => { saveToStorage('photon-chat-rooms', chatRooms); }, [chatRooms]);
+
+      // Check auth on mount
+      useEffect(() => {
+        const savedUser = loadFromStorage('photon-current-user', null);
+        if (savedUser) {
+          setCurrentUser(savedUser);
+          setIsAuthenticated(true);
+          setCurrentDir('/users/' + savedUser.username);
+        }
+      }, []);
+
+      // Network broadcast
+      useEffect(() => {
+        if (isAuthenticated && currentUser) {
+          networkAPI.broadcast(currentUser.username, '192.168.1.100', 'online');
+          const interval = setInterval(() => {
+            networkAPI.getNodes().then(data => {
+              if (data.nodes) setNetworkNodes(data.nodes);
+            });
+          }, 30000);
+          return () => clearInterval(interval);
+        }
+      }, [isAuthenticated, currentUser]);
+
+      const login = (username, password) => {
+        const user = users[username];
+        if (!user) return { success: false, error: 'User not found' };
+        if (!user.isGuest && user.password !== password) return { success: false, error: 'Invalid password' };
+        
+        setCurrentUser(user);
+        setIsAuthenticated(true);
+        setCurrentDir('/users/' + username);
+        saveToStorage('photon-current-user', user);
+        return { success: true };
+      };
+
+      const register = (username, password, displayName, email) => {
+        if (users[username]) return { success: false, error: 'Username already exists' };
+        
+        const newUser = {
+          username,
+          displayName: displayName || username,
+          email: email || '',
+          password,
+          avatar: '👤',
+          created: Date.now(),
+          isGuest: false
+        };
+        
+        setUsers({ ...users, [username]: newUser });
+        
+        // Create user home directory
+        setFileSystem(prev => {
+          const newFS = JSON.parse(JSON.stringify(prev));
+          newFS['/'].contents.users.contents[username] = {
+            type: 'dir',
+            contents: {
+              'welcome.txt': { 
+                type: 'file', 
+                content: 'Welcome ' + displayName + '!\n\nYour Photon OS account is ready.', 
+                size: 50, 
+                executable: false 
+              }
+            }
+          };
+          return newFS;
+        });
+        
+        return { success: true };
+      };
+
+      const logout = () => {
+        setIsAuthenticated(false);
+        setCurrentUser(null);
+        setWindows([]);
+        localStorage.removeItem('photon-current-user');
+      };
+
+      const openWindow = (type, title, data = {}) => {
+        const id = nextId;
+        setNextId(id + 1);
+        
+        const pid = nextPid;
+        setNextPid(pid + 1);
+        setProcesses(prev => [...prev, { 
+          pid, 
+          name: title, 
+          mem: 2048 + Math.floor(Math.random() * 4096), 
+          cpu: Math.random() * 15,
+          user: currentUser.username
+        }]);
+        
+        setWindows([...windows, {
+          id,
+          pid,
+          type,
+          title,
+          x: 100 + (id * 30) % 400,
+          y: 50 + (id * 30) % 300,
+          w: type === 'terminal' ? 700 : type === 'app' ? 600 : type === 'mail' ? 700 : type === 'chat' ? 600 : 600,
+          h: type === 'terminal' ? 450 : type === 'app' ? 500 : type === 'mail' ? 500 : type === 'chat' ? 450 : 400,
+          min: false,
+          ...data
+        }]);
+        setActiveId(id);
+      };
+
+      const closeWindow = (id) => {
+        const win = windows.find(w => w.id === id);
+        if (win) {
+          setProcesses(prev => prev.filter(p => p.pid !== win.pid));
+        }
+        setWindows(windows.filter(w => w.id !== id));
+        if (activeId === id) setActiveId(null);
+      };
+
+      const updateWindow = (id, updates) => {
+        setWindows(windows.map(w => w.id === id ? {...w, ...updates} : w));
+      };
+
+      const addCustomApp = (name, icon, code) => {
+        const newApp = { name, icon, code, id: Date.now() };
+        setCustomApps([...customApps, newApp]);
+      };
+
+      const updateCustomApp = (id, name, icon, code) => {
+        setCustomApps(customApps.map(app => 
+          app.id === id ? { ...app, name, icon, code } : app
+        ));
+      };
+
+      const removeCustomApp = (id) => {
+        setCustomApps(customApps.filter(app => app.id !== id));
+      };
+
+      // File system operations
+      const normalizePath = (path) => {
+        if (!path.startsWith('/')) {
+          path = currentDir.endsWith('/') ? currentDir + '/' + path : currentDir + '/' + path;
+        }
+        const parts = path.split('/').filter(p => p);
+        const normalized = [];
+        for (const part of parts) {
+          if (part === '..') normalized.pop();
+          else if (part !== '.') normalized.push(part);
+        }
+        return '/' + (normalized.length ? normalized.join('/') : '');
+      };
+
+      const getFile = (path) => {
+        const normalized = normalizePath(path);
+        if (normalized === '/' || normalized === '') return fileSystem['/'];
+        
+        const parts = normalized.split('/').filter(p => p);
+        let current = fileSystem['/'];
+        
+        for (const part of parts) {
+          if (!current || !current.contents || !current.contents[part]) return null;
+          current = current.contents[part];
+        }
+        return current;
+      };
+
+      const setFile = (path, content, isDir = false, executable = false) => {
+        const normalized = normalizePath(path);
+        const parts = normalized.split('/').filter(p => p);
+        
+        setFileSystem(prev => {
+          const newFS = JSON.parse(JSON.stringify(prev));
+          let current = newFS['/'];
+          
+          for (let i = 0; i < parts.length - 1; i++) {
+            if (!current.contents[parts[i]]) {
+              current.contents[parts[i]] = { type: 'dir', contents: {} };
+            }
+            current = current.contents[parts[i]];
+          }
+          
+          const filename = parts[parts.length - 1];
+          if (isDir) {
+            current.contents[filename] = { type: 'dir', contents: {} };
+          } else {
+            const isExec = executable || filename.endsWith('.sh') || filename.endsWith('.app') || filename.endsWith('.js');
+            current.contents[filename] = {
+              type: 'file',
+              content: content,
+              size: content.length,
+              executable: isExec
+            };
+          }
+          
+          return newFS;
+        });
+      };
+
+      const deleteFile = (path) => {
+        const normalized = normalizePath(path);
+        const parts = normalized.split('/').filter(p => p);
+        
+        setFileSystem(prev => {
+          const newFS = JSON.parse(JSON.stringify(prev));
+          let current = newFS['/'];
+          
+          for (let i = 0; i < parts.length - 1; i++) {
+            if (!current.contents[parts[i]]) return prev;
+            current = current.contents[parts[i]];
+          }
+          
+          delete current.contents[parts[parts.length - 1]];
+          return newFS;
+        });
+      };
+
+      if (!isAuthenticated) {
+        return <LoginScreen onLogin={login} onRegister={register} />;
+      }
+
+      return (
+        <div className="w-screen h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 overflow-hidden">
+          <div className="h-full pb-12 p-2">
+            {/* Desktop Icons */}
+            <div className="grid grid-cols-10 gap-3 p-6">
+              <DesktopIcon icon="💻" label="Terminal" onClick={() => openWindow('terminal', 'Terminal', { termOut: [], termIn: '' })} />
+              <DesktopIcon icon="📝" label="Editor" onClick={() => openWindow('editor', 'Editor', { noteText: '', noteFile: null })} />
+              <DesktopIcon icon="📁" label="Files" onClick={() => openWindow('explorer', 'Files', { path: '/' })} />
+              <DesktopIcon icon="📧" label="Mail" onClick={() => openWindow('mail', 'Mail', { tab: 'inbox' })} />
+              <DesktopIcon icon="💬" label="Chat" onClick={() => openWindow('chat', 'Chat', { room: 'general', messages: [] })} />
+              <DesktopIcon icon="🎨" label="New App" onClick={() => openWindow('appmaker', 'App Creator', { appName: '', appIcon: '⚡', appCode: '' })} />
+              <DesktopIcon icon="🌐" label="Network" onClick={() => openWindow('network', 'Network Hub')} />
+              
+              {/* Built-in App Templates */}
+              {Object.entries(APP_TEMPLATES).map(([key, template]) => (
+                <DesktopIcon 
+                  key={key}
+                  icon={template.icon} 
+                  label={template.name}
+                  onClick={() => openWindow('app', template.name, { appCode: template.code, appId: key })}
+                />
+              ))}
+              
+              {/* Custom Apps */}
+              {customApps.map(app => (
+                <DesktopIcon 
+                  key={app.id} 
+                  icon={app.icon} 
+                  label={app.name}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    const action = confirm('Edit (OK) or Delete (Cancel)?');
+                    if (action) {
+                      openWindow('appmaker', 'Edit: ' + app.name, {
+                        editingId: app.id,
+                        appName: app.name,
+                        appIcon: app.icon,
+                        appCode: app.code
+                      });
+                    } else {
+                      if (confirm('Delete ' + app.name + '?')) {
+                        removeCustomApp(app.id);
+                      }
+                    }
+                  }}
+                  onClick={() => openWindow('app', app.name, { appCode: app.code, appId: app.id })}
+                />
+              ))}
+            </div>
+
+            {/* Windows */}
+            {windows.filter(w => !w.min).map(win => (
+              <Window
+                key={win.id}
+                win={win}
+                active={activeId === win.id}
+                onActivate={() => setActiveId(win.id)}
+                onClose={() => closeWindow(win.id)}
+                onUpdate={(updates) => updateWindow(win.id, updates)}
+                currentUser={currentUser}
+                currentDir={currentDir}
+                setCurrentDir={setCurrentDir}
+                getFile={getFile}
+                setFile={setFile}
+                deleteFile={deleteFile}
+                processes={processes}
+                setProcesses={setProcesses}
+                networkNodes={networkNodes}
+                mailbox={mailbox}
+                setMailbox={setMailbox}
+                chatRooms={chatRooms}
+                addCustomApp={addCustomApp}
+                updateCustomApp={updateCustomApp}
+                networkAPI={networkAPI}
+              />
+            ))}
+          </div>
+
+          {/* Taskbar */}
+          <Taskbar 
+            windows={windows}
+            activeId={activeId}
+            currentUser={currentUser}
+            networkNodes={networkNodes}
+            startOpen={startOpen}
+            setStartOpen={setStartOpen}
+            openWindow={openWindow}
+            updateWindow={updateWindow}
+            setActiveId={setActiveId}
+            logout={logout}
+          />
+        </div>
+      );
+    }
+
+    function LoginScreen({ onLogin, onRegister }) {
+      const [mode, setMode] = useState('login');
+      const [username, setUsername] = useState('');
+      const [password, setPassword] = useState('');
+      const [displayName, setDisplayName] = useState('');
+      const [email, setEmail] = useState('');
+      const [error, setError] = useState('');
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        setError('');
+
+        if (mode === 'login') {
+          const result = onLogin(username, password);
+          if (!result.success) setError(result.error);
+        } else {
+          if (!username || !password) {
+            setError('Username and password are required');
+            return;
+          }
+          const result = onRegister(username, password, displayName, email);
+          if (!result.success) {
+            setError(result.error);
+          } else {
+            setMode('login');
+            setError('');
+            alert('✅ Account created! You can now log in.');
+          }
+        }
+      };
+
+      const handleGuestLogin = () => {
+        onLogin('guest', '');
+      };
+
+      return (
+        <div className="w-screen h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
+          <div className="bg-gray-900 rounded-2xl shadow-2xl p-8 w-full max-w-md border-2 border-purple-500">
+            <div className="text-center mb-8">
+              <div className="text-6xl mb-4">⚡</div>
+              <h1 className="text-4xl font-bold text-white mb-2">Photon OS</h1>
+              <p className="text-gray-400">Distributed Network Operating System</p>
+            </div>
+
+            <div className="flex gap-2 mb-6">
+              <button
+                onClick={() => setMode('login')}
+                className={`flex-1 py-2 rounded-lg font-bold transition-all ${
+                  mode === 'login'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                }`}
+              >
+                Login
+              </button>
+              <button
+                onClick={() => setMode('register')}
+                className={`flex-1 py-2 rounded-lg font-bold transition-all ${
+                  mode === 'register'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                }`}
+              >
+                Register
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-gray-300 mb-2">Username</label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white outline-none focus:border-purple-500"
+                  placeholder="Enter username"
+                />
+              </div>
+
+              {mode === 'register' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-bold text-gray-300 mb-2">Display Name</label>
+                    <input
+                      type="text"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white outline-none focus:border-purple-500"
+                      placeholder="Your name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-gray-300 mb-2">Email (optional)</label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white outline-none focus:border-purple-500"
+                      placeholder="your@email.com"
+                    />
+                  </div>
+                </>
+              )}
+
+              <div>
+                <label className="block text-sm font-bold text-gray-300 mb-2">Password</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white outline-none focus:border-purple-500"
+                  placeholder="Enter password"
+                />
+              </div>
+
+              {error && (
+                <div className="p-3 bg-red-900 border border-red-700 rounded-lg text-red-200 text-sm">
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="w-full py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold rounded-lg transition-all shadow-lg"
+              >
+                {mode === 'login' ? 'Login' : 'Create Account'}
+              </button>
+            </form>
+
+            <div className="mt-6">
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-700"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-gray-900 text-gray-400">or</span>
+                </div>
+              </div>
+
+              <button
+                onClick={handleGuestLogin}
+                className="w-full mt-4 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold rounded-lg transition-all"
+              >
+                Continue as Guest
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function DesktopIcon({icon, label, onClick, onContextMenu}) {
+      const [clicks, setClicks] = useState(0);
+      
+      useEffect(() => {
+        if (clicks === 2) { onClick(); setClicks(0); }
+        const t = setTimeout(() => setClicks(0), 300);
+        return () => clearTimeout(t);
+      }, [clicks, onClick]);
+
+      return (
+        <div 
+          onClick={() => setClicks(c => c + 1)}
+          onContextMenu={onContextMenu}
+          className="flex flex-col items-center gap-2 p-3 cursor-pointer hover:bg-white/10 rounded-lg transition-all group"
+        >
+          <div className="text-5xl group-hover:scale-110 transition-transform">{icon}</div>
+          <div className="text-white text-xs font-bold text-center drop-shadow-lg">{label}</div>
+        </div>
+      );
+    }
+
+    function Taskbar({ windows, activeId, currentUser, networkNodes, startOpen, setStartOpen, openWindow, updateWindow, setActiveId, logout }) {
+      const [time, setTime] = useState(new Date().toLocaleTimeString());
+
+      useEffect(() => {
+        const timer = setInterval(() => {
+          setTime(new Date().toLocaleTimeString());
+        }, 1000);
+        return () => clearInterval(timer);
+      }, []);
+
+      return (
+        <>
+          <div className="absolute bottom-0 left-0 right-0 h-12 bg-gray-900 border-t-2 border-purple-500 flex items-center px-3 shadow-2xl">
+            <button 
+              onClick={() => setStartOpen(!startOpen)}
+              className="px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 rounded-lg font-bold text-white shadow-lg transition-all"
+            >
+              ⚡ Photon
+            </button>
+            
+            <div className="flex-1 flex gap-2 ml-4 overflow-x-auto">
+              {windows.map(w => (
+                <button 
+                  key={w.id}
+                  onClick={() => w.min ? updateWindow(w.id, {min: false}) : setActiveId(w.id)}
+                  className={`px-4 py-1 rounded-lg text-sm font-medium transition-all ${
+                    activeId === w.id && !w.min
+                      ? 'bg-blue-600 text-white shadow-lg'
+                      : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                  }`}
+                >
+                  {w.title}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="text-sm text-gray-300">👤 {currentUser.displayName}</div>
+              <div className="text-sm text-green-400">🌐 {networkNodes.length} nodes</div>
+              <div className="text-sm font-mono text-gray-300 bg-gray-800 px-4 py-1 rounded-lg">
+                {time}
+              </div>
+            </div>
+          </div>
+
+          {startOpen && (
+            <div className="absolute bottom-14 left-3 w-72 bg-gray-900 border-2 border-purple-500 rounded-xl shadow-2xl overflow-hidden z-50">
+              <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4">
+                <div className="font-bold">Photon OS v2.0</div>
+                <div className="text-xs opacity-80">{currentUser.displayName}</div>
+              </div>
+              <div className="p-2">
+                <StartMenuItem icon="💻" label="Terminal" onClick={() => {openWindow('terminal', 'Terminal', { termOut: [], termIn: '' }); setStartOpen(false);}} />
+                <StartMenuItem icon="📝" label="Text Editor" onClick={() => {openWindow('editor', 'Editor', { noteText: '', noteFile: null }); setStartOpen(false);}} />
+                <StartMenuItem icon="📧" label="Mail" onClick={() => {openWindow('mail', 'Mail', { tab: 'inbox' }); setStartOpen(false);}} />
+                <StartMenuItem icon="💬" label="Chat" onClick={() => {openWindow('chat', 'Chat', { room: 'general', messages: [] }); setStartOpen(false);}} />
+                <StartMenuItem icon="🎨" label="App Creator" onClick={() => {openWindow('appmaker', 'Create App', { appName: '', appIcon: '⚡', appCode: '' }); setStartOpen(false);}} />
+                <StartMenuItem icon="🌐" label="Network" onClick={() => {openWindow('network', 'Network', {}); setStartOpen(false);}} />
+                <div className="border-t border-gray-700 my-2"></div>
+                <StartMenuItem icon="⚙️" label="Settings" onClick={() => {openWindow('settings', 'Settings', {}); setStartOpen(false);}} />
+                <StartMenuItem icon="📊" label="Processes" onClick={() => {openWindow('processes', 'Processes', {}); setStartOpen(false);}} />
+                <div className="border-t border-gray-700 my-2"></div>
+                <StartMenuItem icon="🚪" label="Logout" onClick={() => {logout(); setStartOpen(false);}} />
+                <StartMenuItem icon="🔄" label="Restart" onClick={() => window.location.reload()} />
+              </div>
+            </div>
+          )}
+        </>
+      );
+    }
+
+    function StartMenuItem({icon, label, onClick}) {
+      return (
+        <div 
+          onClick={onClick}
+          className="px-4 py-2 hover:bg-purple-600 cursor-pointer rounded-lg flex items-center gap-3 text-white transition-all"
+        >
+          <span className="text-xl">{icon}</span>
+          <span className="font-medium">{label}</span>
+        </div>
+      );
+    }
+
+    // Window component will be in the next part due to length...
+
+    function Window({win, active, onActivate, onClose, onUpdate, currentUser, currentDir, setCurrentDir, getFile, setFile, deleteFile, processes, setProcesses, networkNodes, mailbox, setMailbox, chatRooms, addCustomApp, updateCustomApp, networkAPI}) {
+      const [pos, setPos] = useState({x: win.x, y: win.y});
+      const [dragging, setDragging] = useState(false);
+      const [dragStart, setDragStart] = useState({x: 0, y: 0});
+
+      const startDrag = (e) => {
+        if (e.target.closest('.no-drag')) return;
+        onActivate();
+        setDragging(true);
+        setDragStart({x: e.clientX - pos.x, y: e.clientY - pos.y});
+      };
+
+      useEffect(() => {
+        if (!dragging) return;
+        const move = (e) => setPos({x: e.clientX - dragStart.x, y: e.clientY - dragStart.y});
+        const up = () => setDragging(false);
+        document.addEventListener('mousemove', move);
+        document.addEventListener('mouseup', up);
+        return () => {
+          document.removeEventListener('mousemove', move);
+          document.removeEventListener('mouseup', up);
+        };
+      }, [dragging, dragStart]);
+
+      return (
+        <div
+          onClick={onActivate}
+          className={`absolute rounded-xl overflow-hidden shadow-2xl ${active ? 'ring-2 ring-purple-400' : ''}`}
+          style={{
+            left: pos.x,
+            top: pos.y,
+            width: win.w,
+            height: win.h,
+            zIndex: active ? 100 : 50,
+            background: 'rgba(17, 24, 39, 0.95)',
+            backdropFilter: 'blur(10px)'
+          }}
+        >
+          <div
+            onMouseDown={startDrag}
+            className={`h-10 ${active ? 'bg-gradient-to-r from-purple-600 to-blue-600' : 'bg-gray-800'} text-white px-4 flex items-center justify-between cursor-move`}
+          >
+            <span className="font-bold text-sm">{win.title}</span>
+            <div className="flex gap-2 no-drag">
+              <button
+                onClick={(e) => {e.stopPropagation(); onUpdate({min: true});}}
+                className="w-6 h-6 bg-yellow-500 hover:bg-yellow-400 rounded-full flex items-center justify-center text-xs font-bold"
+              >
+                –
+              </button>
+              <button
+                onClick={(e) => {e.stopPropagation(); onClose();}}
+                className="w-6 h-6 bg-red-500 hover:bg-red-400 rounded-full flex items-center justify-center text-xs font-bold"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+
+          <div className="h-[calc(100%-40px)] overflow-auto no-drag">
+            {win.type === 'terminal' && (
+              <TerminalWindow win={win} onUpdate={onUpdate} currentUser={currentUser} currentDir={currentDir} setCurrentDir={setCurrentDir} getFile={getFile} setFile={setFile} deleteFile={deleteFile} processes={processes} setProcesses={setProcesses} />
+            )}
+
+            {win.type === 'editor' && (
+              <EditorWindow win={win} onUpdate={onUpdate} setFile={setFile} getFile={getFile} />
+            )}
+
+            {win.type === 'explorer' && (
+              <ExplorerWindow win={win} onUpdate={onUpdate} getFile={getFile} />
+            )}
+
+            {win.type === 'appmaker' && (
+              <AppMakerWindow win={win} onUpdate={onUpdate} addCustomApp={addCustomApp} updateCustomApp={updateCustomApp} />
+            )}
+
+            {win.type === 'app' && (
+              <AppRunner appCode={win.appCode} />
+            )}
+
+            {win.type === 'mail' && (
+              <MailWindow win={win} onUpdate={onUpdate} currentUser={currentUser} mailbox={mailbox} setMailbox={setMailbox} networkAPI={networkAPI} />
+            )}
+
+            {win.type === 'chat' && (
+              <ChatWindow win={win} onUpdate={onUpdate} currentUser={currentUser} chatRooms={chatRooms} networkAPI={networkAPI} />
+            )}
+
+            {win.type === 'network' && (
+              <NetworkWindow networkNodes={networkNodes} networkAPI={networkAPI} />
+            )}
+
+            {win.type === 'processes' && (
+              <ProcessesWindow processes={processes} setProcesses={setProcesses} />
+            )}
+
+            {win.type === 'settings' && (
+              <SettingsWindow currentUser={currentUser} />
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function TerminalWindow({win, onUpdate, currentUser, currentDir, setCurrentDir, getFile, setFile, deleteFile, processes, setProcesses}) {
+      const termRef = useRef(null);
+
+      useEffect(() => {
+        if (termRef.current) {
+          termRef.current.scrollTop = termRef.current.scrollHeight;
+        }
+      }, [win.termOut]);
+
+      const addOutput = (text, type = 'normal') => {
+        onUpdate({ termOut: [...win.termOut, { text, type }] });
+      };
+
+      const handleKey = (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (!win.termIn.trim()) {
+            addOutput('');
+            onUpdate({ termIn: '' });
+            return;
+          }
+          
+          addOutput(currentDir + ' $ ' + win.termIn);
+          
+          // Execute command (simplified - add full command execution)
+          const cmd = win.termIn.trim();
+          if (cmd === 'help') {
+            addOutput('Available commands: ls, cd, pwd, cat, mkdir, touch, rm, echo, clear, ps, whoami');
+          } else if (cmd === 'clear') {
+            onUpdate({ termOut: [], termIn: '' });
+            return;
+          } else if (cmd === 'ls') {
+            const dir = getFile(currentDir);
+            if (dir && dir.contents) {
+              Object.keys(dir.contents).forEach(name => {
+                addOutput(name);
+              });
+            }
+          } else if (cmd === 'pwd') {
+            addOutput(currentDir);
+          } else if (cmd === 'whoami') {
+            addOutput(currentUser.username);
+          } else {
+            addOutput('Command not found: ' + cmd, 'error');
+          }
+          
+          addOutput('');
+          onUpdate({ termIn: '', termHistory: [win.termIn, ...(win.termHistory || [])] });
+        }
+      };
+
+      return (
+        <div className="h-full bg-black text-green-400 font-mono p-4 text-sm flex flex-col">
+          <div ref={termRef} className="flex-1 overflow-y-auto mb-2">
+            {win.termOut.map((line, i) => (
+              <div key={i} className={line.type === 'error' ? 'text-red-400' : 'text-green-400'}>
+                {line.text}
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-purple-400">{currentDir}</span>
+            <span className="text-blue-400">$</span>
+            <input
+              type="text"
+              value={win.termIn}
+              onChange={(e) => onUpdate({termIn: e.target.value})}
+              onKeyDown={handleKey}
+              className="flex-1 bg-transparent outline-none text-green-400"
+              autoFocus
+            />
+          </div>
+        </div>
+      );
+    }
+
+    function EditorWindow({win, onUpdate, setFile, getFile}) {
+      const saveFile = () => {
+        let filename = win.noteFile;
+        if (!filename) {
+          filename = prompt('Enter filename (e.g., myapp.js, script.sh):');
+          if (!filename) return;
+        }
+        const isExecutable = filename.endsWith('.sh') || filename.endsWith('.js') || filename.endsWith('.app');
+        setFile(filename, win.noteText, false, isExecutable);
+        alert('✅ Saved: ' + filename);
+        onUpdate({ noteFile: filename });
+      };
+
+      const openFile = () => {
+        const filename = prompt('Enter filename to open:');
+        if (!filename) return;
+        const file = getFile(filename);
+        if (!file || file.type === 'dir') {
+          alert('❌ File not found');
+        } else {
+          onUpdate({ noteText: file.content, noteFile: filename });
+        }
+      };
+
+      return (
+        <div className="h-full flex flex-col bg-gray-900">
+          <div className="bg-gray-800 border-b border-gray-700 px-4 py-2 flex gap-4 text-sm">
+            <button onClick={openFile} className="text-white hover:text-purple-400">Open</button>
+            <button onClick={saveFile} className="text-white hover:text-purple-400">Save</button>
+            <div className="flex-1"></div>
+            {win.noteFile && <span className="text-gray-400">{win.noteFile}</span>}
+          </div>
+          <textarea
+            value={win.noteText}
+            onChange={(e) => onUpdate({noteText: e.target.value})}
+            className="flex-1 p-4 bg-gray-900 text-gray-100 font-mono text-sm resize-none outline-none"
+            placeholder="Write your code here...\n\n// JavaScript example:\nconst MyApp = () => {\n  return <div>Hello!</div>;\n};\nreturn <MyApp />;"
+          />
+        </div>
+      );
+    }
+
+    function ExplorerWindow({win, onUpdate, getFile}) {
+      const dir = getFile(win.path);
+
+      return (
+        <div className="p-6 bg-gray-900 text-gray-100 h-full overflow-auto">
+          <div className="mb-4">
+            <h2 className="text-2xl font-bold mb-2 text-purple-400">File Explorer</h2>
+            <p className="text-sm text-gray-400 font-mono">{win.path}</p>
+          </div>
+          <div className="space-y-2">
+            {dir && dir.contents ? Object.entries(dir.contents).map(([name, item]) => (
+              <div
+                key={name}
+                className="flex items-center gap-3 p-3 bg-gray-800 hover:bg-gray-700 rounded-lg cursor-pointer transition-all"
+                onDoubleClick={() => {
+                  if (item.type === 'dir') {
+                    const newPath = win.path === '/' ? '/' + name : win.path + '/' + name;
+                    onUpdate({ path: newPath });
+                  }
+                }}
+              >
+                <div className="text-3xl">
+                  {item.type === 'dir' ? '📁' : (item.executable ? '⚙️' : '📄')}
+                </div>
+                <div className="flex-1">
+                  <div className="font-medium">{name}</div>
+                  <div className="text-xs text-gray-400">
+                    {item.type === 'dir' ? 'Directory' : `${item.size} bytes`}
+                  </div>
+                </div>
+              </div>
+            )) : <div className="text-gray-500">Empty directory</div>}
+          </div>
+        </div>
+      );
+    }
+
+    function AppMakerWindow({win, onUpdate, addCustomApp, updateCustomApp}) {
+      const availableIcons = ['⚡','🚀','💡','🔥','⭐','🎯','💻','📱','🎨','🎵','📊','🔧','⚙️','🌟','💎','🎮','📡','🔬','🎪','🎭','🎬','🎤','🎸','🎹','🎺','🎻','🥁','🎲','🎰','🎳'];
+
+      const saveApp = () => {
+        if (!win.appName || !win.appCode) {
+          alert('❌ Please enter a name and code!');
+          return;
+        }
+        
+        if (win.editingId) {
+          updateCustomApp(win.editingId, win.appName, win.appIcon, win.appCode);
+          alert('✅ App updated!');
+        } else {
+          addCustomApp(win.appName, win.appIcon, win.appCode);
+          alert('✅ App created! Reloading...');
+        }
+        setTimeout(() => window.location.reload(), 500);
+      };
+
+      const loadTemplate = (templateKey) => {
+        const template = APP_TEMPLATES[templateKey];
+        if (template) {
+          onUpdate({
+            appName: template.name + ' Copy',
+            appIcon: template.icon,
+            appCode: template.code
+          });
+        }
+      };
+
+      return (
+        <div className="p-6 bg-gray-900 text-gray-100 h-full overflow-auto">
+          <h2 className="text-2xl font-bold mb-4 text-purple-400">
+            {win.editingId ? 'Edit App' : 'Create New App'}
+          </h2>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-bold mb-2">App Name</label>
+              <input
+                type="text"
+                value={win.appName}
+                onChange={(e) => onUpdate({appName: e.target.value})}
+                className="w-full p-2 bg-gray-800 rounded border border-gray-700 outline-none focus:border-purple-500 text-white"
+                placeholder="My Awesome App"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold mb-2">Choose Icon</label>
+              <div className="grid grid-cols-10 gap-2">
+                {availableIcons.map(icon => (
+                  <button
+                    key={icon}
+                    onClick={() => onUpdate({appIcon: icon})}
+                    className={`text-3xl p-2 rounded transition-all ${
+                      win.appIcon === icon 
+                        ? 'bg-purple-600 scale-110 ring-2 ring-purple-400' 
+                        : 'bg-gray-800 hover:bg-gray-700'
+                    }`}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold mb-2">Templates</label>
+              <div className="flex gap-2">
+                {Object.keys(APP_TEMPLATES).map(key => (
+                  <button
+                    key={key}
+                    onClick={() => loadTemplate(key)}
+                    className="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded text-sm"
+                  >
+                    {APP_TEMPLATES[key].name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold mb-2">JavaScript Code</label>
+              <textarea
+                value={win.appCode}
+                onChange={(e) => onUpdate({appCode: e.target.value})}
+                className="w-full h-64 p-3 bg-gray-800 rounded border border-gray-700 outline-none focus:border-purple-500 font-mono text-sm text-white"
+                placeholder="// Your React component code here&#10;const MyApp = () => {&#10;  return <div>Hello World!</div>;&#10;};&#10;&#10;return <MyApp />;"
+              />
+            </div>
+
+            <button
+              onClick={saveApp}
+              className="w-full py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 rounded-lg font-bold text-white text-lg transition-all shadow-lg"
+            >
+              💾 {win.editingId ? 'Update App' : 'Create App'}
+            </button>
+
+            <div className="text-sm text-gray-400 bg-gray-800 p-3 rounded">
+              <strong>💡 Tips:</strong><br/>
+              • Write React components using hooks<br/>
+              • Use Tailwind CSS for styling<br/>
+              • Must return JSX at the end<br/>
+              • localStorage available for persistence<br/>
+              • Right-click app icon to edit later
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function AppRunner({appCode}) {
+      const AppComponent = useMemo(() => {
+        try {
+          const func = new Function('React', 'useState', 'useEffect', 'useRef', 'useMemo', appCode);
+          return func(React, useState, useEffect, useRef, useMemo);
+        } catch (error) {
+          return (
+            <div className="h-full flex items-center justify-center bg-red-900 text-white p-6">
+              <div>
+                <h3 className="text-xl font-bold mb-2">⚠️ App Error</h3>
+                <pre className="text-sm bg-black/50 p-3 rounded overflow-auto">
+                  {error.toString()}
+                </pre>
+              </div>
+            </div>
+          );
+        }
+      }, [appCode]);
+
+      return <div className="h-full">{AppComponent}</div>;
+    }
+
+    function MailWindow({win, onUpdate, currentUser, mailbox, setMailbox, networkAPI}) {
+      const [to, setTo] = useState('');
+      const [subject, setSubject] = useState('');
+      const [body, setBody] = useState('');
+
+      const sendMail = async () => {
+        if (!to || !subject || !body) {
+          alert('❌ Please fill all fields');
+          return;
+        }
+
+        const mail = {
+          id: Date.now(),
+          from: currentUser.username,
+          to,
+          subject,
+          body,
+          timestamp: Date.now(),
+          read: false
+        };
+
+        // Try network send
+        await networkAPI.sendMail(currentUser.username, to, subject, body);
+
+        // Save locally
+        setMailbox([...mailbox, mail]);
+        
+        alert('✅ Mail sent!');
+        setTo('');
+        setSubject('');
+        setBody('');
+        onUpdate({ tab: 'inbox' });
+      };
+
+      return (
+        <div className="h-full flex flex-col bg-gray-900 text-white">
+          <div className="bg-gray-800 border-b border-gray-700 flex">
+            <button
+              onClick={() => onUpdate({ tab: 'inbox' })}
+              className={`px-6 py-3 ${win.tab === 'inbox' ? 'bg-gray-900 border-b-2 border-purple-500' : 'hover:bg-gray-700'}`}
+            >
+              📥 Inbox ({mailbox.filter(m => m.to === currentUser.username).length})
+            </button>
+            <button
+              onClick={() => onUpdate({ tab: 'sent' })}
+              className={`px-6 py-3 ${win.tab === 'sent' ? 'bg-gray-900 border-b-2 border-purple-500' : 'hover:bg-gray-700'}`}
+            >
+              📤 Sent
+            </button>
+            <button
+              onClick={() => onUpdate({ tab: 'compose' })}
+              className={`px-6 py-3 ${win.tab === 'compose' ? 'bg-gray-900 border-b-2 border-purple-500' : 'hover:bg-gray-700'}`}
+            >
+              ✏️ Compose
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-auto p-4">
+            {win.tab === 'inbox' && (
+              <div className="space-y-2">
+                {mailbox.filter(m => m.to === currentUser.username).length === 0 ? (
+                  <div className="text-gray-500 text-center mt-8">No messages</div>
+                ) : (
+                  mailbox.filter(m => m.to === currentUser.username).map(mail => (
+                    <div key={mail.id} className="bg-gray-800 p-4 rounded hover:bg-gray-700 cursor-pointer">
+                      <div className="flex justify-between mb-2">
+                        <span className="font-bold">From: {mail.from}</span>
+                        <span className="text-sm text-gray-400">{new Date(mail.timestamp).toLocaleString()}</span>
+                      </div>
+                      <div className="font-bold mb-2">{mail.subject}</div>
+                      <div className="text-gray-300">{mail.body}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {win.tab === 'sent' && (
+              <div className="space-y-2">
+                {mailbox.filter(m => m.from === currentUser.username).length === 0 ? (
+                  <div className="text-gray-500 text-center mt-8">No sent messages</div>
+                ) : (
+                  mailbox.filter(m => m.from === currentUser.username).map(mail => (
+                    <div key={mail.id} className="bg-gray-800 p-4 rounded hover:bg-gray-700">
+                      <div className="flex justify-between mb-2">
+                        <span className="font-bold">To: {mail.to}</span>
+                        <span className="text-sm text-gray-400">{new Date(mail.timestamp).toLocaleString()}</span>
+                      </div>
+                      <div className="font-bold mb-2">{mail.subject}</div>
+                      <div className="text-gray-300">{mail.body}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {win.tab === 'compose' && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold mb-2">To:</label>
+                  <input
+                    type="text"
+                    value={to}
+                    onChange={(e) => setTo(e.target.value)}
+                    className="w-full p-2 bg-gray-800 rounded border border-gray-700 outline-none focus:border-purple-500"
+                    placeholder="username"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold mb-2">Subject:</label>
+                  <input
+                    type="text"
+                    value={subject}
+                    onChange={(e) => setSubject(e.target.value)}
+                    className="w-full p-2 bg-gray-800 rounded border border-gray-700 outline-none focus:border-purple-500"
+                    placeholder="Subject"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold mb-2">Message:</label>
+                  <textarea
+                    value={body}
+                    onChange={(e) => setBody(e.target.value)}
+                    className="w-full h-48 p-3 bg-gray-800 rounded border border-gray-700 outline-none focus:border-purple-500"
+                    placeholder="Write your message..."
+                  />
+                </div>
+                <button
+                  onClick={sendMail}
+                  className="w-full py-3 bg-purple-600 hover:bg-purple-500 rounded font-bold"
+                >
+                  📧 Send Mail
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function ChatWindow({win, onUpdate, currentUser, chatRooms, networkAPI}) {
+      const [message, setMessage] = useState('');
+      const messagesEndRef = useRef(null);
+
+      useEffect(() => {
+        // Load messages from network
+        const loadMessages = async () => {
+          const data = await networkAPI.getMessages(win.room);
+          if (data.messages) {
+            onUpdate({ messages: data.messages });
+          }
+        };
+        loadMessages();
+        
+        // Poll for new messages
+        const interval = setInterval(loadMessages, 5000);
+        return () => clearInterval(interval);
+      }, [win.room]);
+
+      useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, [win.messages]);
+
+      const sendMessage = async () => {
+        if (!message.trim()) return;
+
+        const msg = {
+          id: Date.now(),
+          user: currentUser.username,
+          text: message,
+          timestamp: Date.now()
+        };
+
+        // Send to network
+        await networkAPI.sendMessage(win.room, currentUser.username, message);
+
+        // Add locally
+        onUpdate({ messages: [...win.messages, msg] });
+        setMessage('');
+      };
+
+      return (
+        <div className="h-full flex flex-col bg-gray-900 text-white">
+          <div className="bg-gray-800 border-b border-gray-700 p-3 flex gap-2">
+            {chatRooms.map(room => (
+              <button
+                key={room}
+                onClick={() => onUpdate({ room, messages: [] })}
+                className={`px-4 py-2 rounded ${win.room === room ? 'bg-purple-600' : 'bg-gray-700 hover:bg-gray-600'}`}
+              >
+                #{room}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex-1 overflow-auto p-4 space-y-3">
+            {win.messages.map(msg => (
+              <div key={msg.id} className="flex gap-3">
+                <div className="text-2xl">👤</div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-bold text-purple-400">{msg.user}</span>
+                    <span className="text-xs text-gray-400">{new Date(msg.timestamp).toLocaleTimeString()}</span>
+                  </div>
+                  <div className="text-gray-200">{msg.text}</div>
+                </div>
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+
+          <div className="p-4 bg-gray-800 border-t border-gray-700 flex gap-2">
+            <input
+              type="text"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+              className="flex-1 p-2 bg-gray-900 rounded border border-gray-700 outline-none focus:border-purple-500"
+              placeholder="Type a message..."
+            />
+            <button
+              onClick={sendMessage}
+              className="px-6 py-2 bg-purple-600 hover:bg-purple-500 rounded font-bold"
+            >
+              Send
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    function NetworkWindow({networkNodes, networkAPI}) {
+      return (
+        <div className="p-6 bg-gray-900 text-gray-100 h-full overflow-auto">
+          <h2 className="text-2xl font-bold mb-4 text-purple-400">Network Hub</h2>
+          
+          <div className="bg-gray-800 p-4 rounded-lg mb-4">
+            <h3 className="font-bold mb-3">Connected Nodes</h3>
+            {networkNodes.length === 0 ? (
+              <div className="text-gray-500">No network nodes detected</div>
+            ) : (
+              networkNodes.map(node => (
+                <div key={node.id} className="flex items-center justify-between p-3 bg-gray-900 rounded mb-2">
+                  <div>
+                    <div className="font-bold">{node.name || node.user}</div>
+                    <div className="text-xs text-gray-400">{node.ip || 'local'}</div>
+                  </div>
+                  <div className="text-xs px-2 py-1 rounded bg-green-600">ONLINE</div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="bg-gray-800 p-4 rounded-lg">
+            <h3 className="font-bold mb-2">Network Status</h3>
+            <div className="text-sm space-y-1 text-gray-300">
+              <div>Mode: Distributed P2P</div>
+              <div>Protocol: Photon Network v2.0</div>
+              <div>Server: Optional (works offline)</div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function ProcessesWindow({processes, setProcesses}) {
+      const killProcess = (pid) => {
+        if (pid <= 2) {
+          alert('❌ Cannot kill system process');
+          return;
+        }
+        setProcesses(processes.filter(p => p.pid !== pid));
+      };
+
+      return (
+        <div className="p-6 bg-gray-900 text-gray-100 h-full overflow-auto">
+          <h2 className="text-2xl font-bold mb-4 text-purple-400">Running Processes</h2>
+          <div className="font-mono text-sm">
+            <div className="flex gap-4 mb-2 text-gray-400 font-bold border-b border-gray-700 pb-2">
+              <span className="w-12">PID</span>
+              <span className="w-24">USER</span>
+              <span className="flex-1">NAME</span>
+              <span className="w-20">MEM</span>
+              <span className="w-16">CPU</span>
+              <span className="w-20">ACTION</span>
+            </div>
+            {processes.map(p => (
+              <div key={p.pid} className="flex gap-4 p-2 bg-gray-800 rounded mb-1 hover:bg-gray-700 transition-all items-center">
+                <span className="w-12 text-purple-400">{p.pid}</span>
+                <span className="w-24 text-blue-400">{p.user}</span>
+                <span className="flex-1">{p.name}</span>
+                <span className="w-20 text-green-400">{p.mem}K</span>
+                <span className="w-16 text-yellow-400">{p.cpu.toFixed(1)}%</span>
+                <span className="w-20">
+                  {p.pid > 2 && (
+                    <button
+                      onClick={() => killProcess(p.pid)}
+                      className="px-2 py-1 bg-red-600 hover:bg-red-500 rounded text-xs"
+                    >
+                      Kill
+                    </button>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function SettingsWindow({currentUser}) {
+      return (
+        <div className="p-6 bg-gray-900 text-gray-100 h-full overflow-auto">
+          <h2 className="text-2xl font-bold mb-4 text-purple-400">Settings</h2>
+          
+          <div className="space-y-4">
+            <div className="bg-gray-800 p-4 rounded-lg">
+              <h3 className="font-bold mb-2">User Account</h3>
+              <div className="text-sm space-y-2">
+                <div>Username: <span className="text-purple-400">{currentUser.username}</span></div>
+                <div>Display Name: <span className="text-purple-400">{currentUser.displayName}</span></div>
+                <div>Email: <span className="text-purple-400">{currentUser.email || 'Not set'}</span></div>
+                <div>Account Created: <span className="text-purple-400">{new Date(currentUser.created).toLocaleString()}</span></div>
+              </div>
+            </div>
+
+            <div className="bg-gray-800 p-4 rounded-lg">
+              <h3 className="font-bold mb-2">System Info</h3>
+              <div className="text-sm space-y-2">
+                <div>OS: Photon OS v2.0</div>
+                <div>Architecture: WebAssembly</div>
+                <div>Storage: localStorage</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<PhotonOS />);
+  </script>
+</body>
+</html>
