@@ -1640,5 +1640,158 @@ return <PaintApp />;`
 
     ReactDOM.createRoot(document.getElementById('root')).render(<PhotonOS />);
   </script>
+<!-- ===========================
+     Photon About Icon + Modal
+     =========================== -->
+<div id="photonAboutIcon" role="button" tabindex="0" aria-label="About Photon Browser">
+  <div class="photonAboutGlyph" aria-hidden="true">☀️</div>
+  <div class="photonAboutLabel">About Photon</div>
+  <div class="photonAboutHint">Click for details</div>
+</div>
+
+<div id="photonAboutOverlay" aria-hidden="true">
+  <div class="photonAboutBackdrop" data-photon-about-close="1"></div>
+
+  <div class="photonAboutModal" role="dialog" aria-modal="true" aria-label="About Photon Browser">
+    <div class="photonAboutHeader">
+      <div class="photonAboutTitle">
+        <h2>Photon Browser (Prototype)</h2>
+        <div>This is a rough draft UI — the direction is real, the implementation is early.</div>
+      </div>
+      <button class="photonAboutClose" type="button" data-photon-about-close="1">Close ✕</button>
+    </div>
+
+    <div class="photonAboutBody">
+      <div class="photonAboutCallout">
+        <p><strong>TL;DR:</strong> Photon Browser is aiming to become a “web-native operating environment” — a single place where apps, communication, and storage feel like one coherent desktop. What you’re looking at here is not the finished product. It’s a sketch: a surface you can click, move, and expand while the real engine is built underneath.</p>
+      </div>
+
+      <h3>What you’re looking at</h3>
+      <p>This page is a UI seed: a minimal desktop-like interface that proves the “shape” of the experience. The goal is to make the browser stop feeling like a pile of tabs and start feeling like a real environment — icons you trust, tools you can reuse, a terminal that’s first-class, and a shared space that can grow into communities, services, and worlds.</p>
+      <p>Right now, many features are placeholders or mocked behaviors. That’s intentional. The point of this stage is to pin down a clear interaction grammar: what does it feel like to launch an app, manage a workspace, open a chat, browse content, or attach a data object? Once the grammar is stable, the infrastructure can be built with confidence.</p>
+
+      <h3>What Photon Browser is trying to become</h3>
+      <p>Photon Browser is not trying to be “yet another website.” It’s trying to be a container where websites become <em>tools</em>, tools become <em>services</em>, and services become <em>rooms</em> inside a larger system. The long-term target is a cohesive platform where you can:</p>
+      <ul>
+        <li>Launch lightweight apps from icons — not bookmarks — and have them behave like real utilities.</li>
+        <li>Run a terminal that can call local-like commands (within sandboxed limits) and automate workflows.</li>
+        <li>Move between communication spaces (chat, rooms, messages) without leaving the environment.</li>
+        <li>Work with data as a first-class object: attach it, reference it, transform it, share it — without constantly “downloading/uploading files” like it’s 2005.</li>
+        <li>Eventually connect nodes and services so the platform isn’t dependent on one central server to “be real.”</li>
+      </ul>
+
+      <h3>What this prototype is (and is not)</h3>
+      <p><strong>It is:</strong> a visual draft that demonstrates layout, interaction patterns, and a desktop metaphor. It exists to answer: “Do we like the feel of this? What belongs on the desktop? What belongs in a terminal? What should be one click away?”</p>
+      <p><strong>It is not:</strong> a secure system, a finished networking stack, or a complete browser replacement. The implementation is intentionally simple so it can evolve quickly. If something looks like it should “do more,” that’s usually because it’s a stub waiting for the real engine.</p>
+
+      <h3>The core idea: a desktop that lives on the web</h3>
+      <p>The web is already the biggest runtime in human history — it’s just fragmented. Photon’s bet is that people don’t want more tabs; they want a stable, durable workspace with a memory. A place where the tools you use every day are always there, and where the environment itself can host communities and services as naturally as it hosts a calculator.</p>
+      <p>The desktop metaphor matters because it’s compact: icons, windows, layers, and context. It lets you keep “a few things open” without losing your mind. It also makes it easier to teach new users what to do: click icons, drag windows, open a terminal, join a room. That’s a much gentler learning curve than “install this extension, configure these settings, and read these docs.”</p>
+
+      <h3>Why “Photon”?</h3>
+      <p>A photon is a minimal packet of energy that still carries real information. That’s the vibe: small artifacts that move fast, can be verified, and can be recombined. In the long run, Photon Browser is designed to treat information as structured objects — not blobs — and to make movement and verification of those objects feel natural.</p>
+
+      <h3>How the experience should feel (product philosophy)</h3>
+      <p>Photon Browser is optimizing for <strong>flow</strong>. That means:</p>
+      <ul>
+        <li><strong>Low friction:</strong> actions should be one click away. If you need a “setup wizard” for everything, you’re already losing.</li>
+        <li><strong>Composable tools:</strong> small apps should snap together like LEGO. The terminal should be able to call them. Apps should be able to call each other.</li>
+        <li><strong>Visible state:</strong> users should see what’s going on — status, connectivity, tasks, logs — without hidden magic.</li>
+        <li><strong>Upgradeable surface:</strong> the UI can evolve without breaking the user’s mental model.</li>
+      </ul>
+
+      <h3>What “webpage you can use” means here</h3>
+      <p>This page is intentionally static-friendly so it can be hosted anywhere (including GitHub Pages). That keeps distribution simple: you can share a link and the UI loads. As the system grows, heavier features can be plugged in behind the same surface: APIs, node services, storage backends, permission layers, and real-time channels.</p>
+      <p>The trick is to keep the visible UI stable while swapping out the engine underneath. Think of this prototype as a cockpit: the controls matter, even if the aircraft is still being assembled.</p>
+
+      <h3>Security and trust (early notes)</h3>
+      <div class="photonAboutCallout">
+        <p><strong>Important:</strong> This prototype should be treated like a demo UI. Do not assume privacy, durability, or protection. As the system matures, security needs to be explicit: what is local, what is remote, what is verified, and what is merely displayed.</p>
+      </div>
+      <p>One of the long-term goals of Photon Browser is to make trust visible rather than implied. Users should know when they’re operating on local state, shared state, or remote state. They should know what can be verified, what is ephemeral, and what is permanent. A real system needs clear boundaries: authentication, authorization, rate limits, moderation, logging, abuse handling, and safe defaults.</p>
+
+      <h3>The roadmap (high-level)</h3>
+      <p>Photon Browser is moving in layers. Each layer makes the platform more real without breaking the surface experience:</p>
+      <ul>
+        <li><strong>Layer 0 — UI grammar:</strong> desktop, windows, icons, terminal, and a coherent feel. (That’s what this prototype is.)</li>
+        <li><strong>Layer 1 — App model:</strong> a standard way to define an app, save it, load it, and run it in the environment.</li>
+        <li><strong>Layer 2 — Real storage objects:</strong> data treated as objects with references, not constant uploads/downloads.</li>
+        <li><strong>Layer 3 — Real-time comms:</strong> chat/rooms/services integrated as first-class apps.</li>
+        <li><strong>Layer 4 — Node/service layer:</strong> optional decentralization where nodes can provide services and the UI becomes a portal into that mesh.</li>
+      </ul>
+
+      <h3>What will change (and what won’t)</h3>
+      <p><strong>What will change:</strong> the internals. The app runner. The storage engine. The communications stack. The ability to install/compose tools. The performance. The reliability.</p>
+      <p><strong>What should not change:</strong> the clarity of the surface. You should always be able to point at the screen and explain what’s happening. Photon is trying to be powerful without becoming opaque.</p>
+
+      <h3>How you can help (even right now)</h3>
+      <p>If you’re testing this prototype, the most valuable feedback is not “it’s buggy.” It’s:</p>
+      <ul>
+        <li>Where did you click first, and why?</li>
+        <li>What did you expect to happen, and what happened instead?</li>
+        <li>Which parts felt obvious, and which parts felt confusing?</li>
+        <li>What would you want on the desktop by default?</li>
+        <li>What should always be visible (status, node health, messages, tasks)?</li>
+      </ul>
+      <p>Photon Browser is ultimately a product about <em>organization</em> — organizing tools, data, and people into one place. If we get the organization right, the engineering has a clear target.</p>
+
+      <h3>Final note</h3>
+      <p>Consider this build a <strong>rough draft</strong>. It’s a proof that the desktop metaphor works in the browser and that the UI can be both playful and practical. The real Photon Browser is the system underneath — and this UI is the promise of how it will feel when it’s done.</p>
+    </div>
+
+    <div class="photonAboutFooter">
+      <div>Tip: press <strong>Esc</strong> to close.</div>
+      <div>Photon Browser • Prototype UI</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const icon = document.getElementById('photonAboutIcon');
+  const overlay = document.getElementById('photonAboutOverlay');
+
+  if (!icon || !overlay) return;
+
+  function openAbout() {
+    overlay.setAttribute('aria-hidden', 'false');
+    // focus the close button for keyboard users
+    const closeBtn = overlay.querySelector('[data-photon-about-close="1"]');
+    if (closeBtn) closeBtn.focus({ preventScroll: true });
+  }
+
+  function closeAbout() {
+    overlay.setAttribute('aria-hidden', 'true');
+    icon.focus?.({ preventScroll: true });
+  }
+
+  // click icon
+  icon.addEventListener('click', openAbout);
+
+  // keyboard activate icon
+  icon.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openAbout();
+    }
+  });
+
+  // close on backdrop or close button
+  overlay.addEventListener('click', (e) => {
+    const target = e.target;
+    if (target && target.getAttribute && target.getAttribute('data-photon-about-close') === '1') {
+      closeAbout();
+    }
+  });
+
+  // close on ESC
+  window.addEventListener('keydown', (e) => {
+    if (overlay.getAttribute('aria-hidden') === 'false' && e.key === 'Escape') {
+      closeAbout();
+    }
+  });
+})();
+</script>
+  
 </body>
 </html>
